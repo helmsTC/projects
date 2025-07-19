@@ -1,0 +1,219 @@
+<head>
+  <link rel="stylesheet" href="/static/bootstrap.min.css">
+  <link href="/static/style.css" rel="stylesheet">
+  <script src="/static/javascripts/jRequest/jRequest-3.6.3.min.js"></script>
+  <script type="text/javascript" src="/static/javascripts/bootstrap/bootstrap.min.js"></script>
+</head>
+<html>
+
+<div class="menubar" id="menu">
+  <ul class="menu">
+      <li class="menuItem"><a class="menuLink active" id="indexMenuLink">Home</a></li>
+      <li class="menuItem"><a class="menuLink" id="docsLink" href="/docs/" target="_blank" rel="noopener noreferrer">Documentation</a></li>
+      <li class="menuItem"><a class="menuLink" id="classMenuLink">Classroom</a></li>
+      <li class="menuItem"><a class="menuLink" id="rankingsMenuLink">Report</a></li>
+      <li class="menuItem"><a class="menuLink" id="dashMenuLink">Office</a></li>
+      <li class="menuItem"><a class="menuLink" id="activeMenuLink">Active</a></li>
+      <li class="menuImg"><div class="menuImg-container"><img src="/static/images/AFRL_logo.png"></div></li>
+      <li class="menuImg"><div class="menuImg-container"><img src="/static/images/AUKUS_logo.png"></div></li>
+      <li class="menuImg"><div class="menuImg-container top-pad"><img src="/static/images/DSTL_logo.png"></div></li>
+  </ul>
+</div>
+<br><br>
+<table class="table table-striped" id="expnav">
+  <thead>
+    <tr>
+      <th>Experiment identifier</th>
+      <th>Request</th>
+      <th>Report</th>
+      <th>Office</th>
+      <th>Active</th>
+    </tr>
+  </thead>
+</table>
+
+<script>
+  const url = new URL(window.location.href);
+  const sampler = url.searchParams.get('sampler');
+  var urlParams = new URLSearchParams(window.location.search);
+
+  if (sampler == null) {
+    var tabs = ["indexMenuLink", "docsLink", "classMenuLink", "rankingsMenuLink", "dashMenuLink", "activeMenuLink"];
+    for (var i=0; i<tabs.length; i++) {
+      var m = document.getElementById(tabs[i]);
+      if (i >= 2){
+        m.style.display = "none";
+      }
+    }
+  }
+  document.getElementById("dashMenuLink").setAttribute("href", "/dashboard/" + sampler);
+  document.getElementById("classMenuLink").setAttribute("href", "/classroom/" + sampler);
+  document.getElementById("rankingsMenuLink").setAttribute("href", "/rankings/" + sampler);
+  document.getElementById("activeMenuLink").setAttribute("href", "/active/" + sampler);
+
+  // automatically refresh list
+  function refresh_experiments() {
+    $.get("/api/meta", function (data) {
+      data = data["samplers"];
+      console.log(data);
+      if (Array(data).length) {
+        rows = ["<thead><tr><th>Experiment name</th>" +
+                "<th>Classroom</th>" +
+                "<th>Report</th>" +
+                "<th>Office</th>" +
+                "<th>Active</th></tr></thead>"];
+
+        href = function(url) {
+            return "<a href='" + url + "'>" + url + "</a>";
+        }
+        for (var name in data){
+          var datum = data[name];
+          if (name == "meta"){
+              continue;
+          }
+        const row = "<tr><td>" + datum["name"] + "</td>" +
+                     "<td>" + href(datum["classroom_path"]) + "</td>" +
+                     "<td>" + href(datum["results_path"]) + "</td>" +
+                     "<td>" + href(datum["dashboard_path"]) + "</td>" +
+                     "<td>" + href("/active/" + datum["name"]) + "</td></tr>";
+          rows.push(row);
+        }
+        $("#expnav").html(rows.join(""));
+      }
+    });
+  }
+  window.setInterval(refresh_experiments, 3000);
+  refresh_experiments();
+</script>
+
+<br><br><br>
+    <center>
+    <details>
+        <summary>Admin panel</summary>
+        <p id="successfulFrontend"></p>
+        <p style="text-align: center">
+        <ul style="text-align: center">
+        <li>
+        <a onclick="reset();">Reset</a>
+        </li>
+        <li><a href="/api/download">Download</a></li>
+        </ul>
+        </p>
+    <h3>Experiment launch</h3>
+          <p>Upload a sampler configuration here.
+          The <a href="/docs/config.html">config docs</a> might be useful. This
+          configuration will be sent over <a href="/docs/api.html">the HTTP API</a>
+          and might include components from the <a href="/docs/samplers.html">Sampler API</a>
+          and <a href="/docs/artists.html">Artist API</a>.</p>
+        <form id="initForm" method="POST" action="/api/upload/init" enctype="multipart/form-data">
+        <input name="files" type="file" id="config" name="config">
+        <button id="initSubmit" class="submit-button" type="submit">Upload</button>
+        </form>
+
+        <script>
+             //Script to alert the user if they haven't selected any files.
+            const fileInput = document.getElementById('config');
+            const uploadButton = document.getElementById('initSubmit');
+
+            uploadButton.addEventListener('click', async (e) => {
+                if (fileInput.files.length === 0) {
+                    alert('Please select a file');
+                    e.preventDefault();
+                    return;
+                }
+            });
+        </script>
+
+        <p id="successfulInit"></p>
+        <br>
+          <h3>Data upload</h3>
+          <p> <a href="/api/docs#/experiment management/init_files_api_upload__location__post">the docs for POST /api/upload</a> for more detail.</p>
+        <form id="redisForm" action="/api/upload/redis" method="POST" enctype="multipart/form-data">
+          <input name="files" type="file" id="redisFile">
+          <input id="redisSubmit" type="submit" class="submit-button" value="Upload">
+        </form>
+        <script>
+            //Script to alert the user if they havent selected any files.
+            const redisFilesInput = document.getElementById('redisFile');
+            const uploadDataButton = document.getElementById('redisSubmit');
+
+            uploadDataButton.addEventListener('click', async (e) => {
+                if (redisFilesInput.files.length === 0) {
+                    alert('Please select a file');
+                    e.preventDefault();
+                    return;
+                }
+            });
+        </script>
+        <p id="successfulRedis"></p>
+
+    </details>
+    </center>
+    <br><br><br>
+
+    </body>
+    <script>
+      var configFile = null;
+
+      function prepFile() {
+        const [file] = document.getElementById("config").files;
+        const reader = new FileReader();
+
+        reader.addEventListener(
+          "load",
+          () => {
+            // this will then display a text file
+            configFile = reader.result;
+          },
+          false,
+        );
+
+        if (file) {
+          reader.readAsText(file);
+        }
+      }
+
+      $("form#frontendForm").submit(function(e) {
+        document.getElementById("frontendSubmit").disabled = true;
+        e.preventDefault();
+        var formData = new FormData(this);
+
+        $.ajax({
+            url: "/api/upload/frontend",
+            type: 'POST',
+            data: formData,
+            success: function (data) {
+              document.getElementById("frontendSubmit").disabled = false;
+              document.getElementById("successfulFrontend").innerHTML = "Success!";
+            },
+            cache: false,
+            contentType: false,
+            processData: false
+        });
+      });
+    </script>
+
+<script>
+function reset() {
+  let ans = prompt("Are you sure you want to delete .");
+    console.log("ans");
+    console.log(ans);
+  if (ans == "deletetime") {
+    console.log("resetting");
+    $.ajax({
+        url: "/api/reset?force=1",
+        type: 'DELETE',
+        dataType: 'json',
+        contentType: 'application/json',
+        success: function (data) {
+        },
+        error: function (request, status, error) {
+        },
+        cache: false,
+        contentType: false,
+        processData: false,
+    });
+  }
+}
+</script>
+</html>
