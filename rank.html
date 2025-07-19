@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+  <link rel="stylesheet" href="/static/bootstrap.min.css">
+  <link href="/static/font-awesome/stylesheets/font-awesome.min.css" rel="stylesheet">
+  <link href="/static/style.css" rel="stylesheet">
+  <!-- TODO: download these leaflet.css and leaflet.js -->
+  <link rel="stylesheet" href="/static/leaflet/leaflet.css" />
+<script src="/static/leaflet/leaflet.js"></script>
+  <script type="text/javascript" src="/static/javascripts/jquery/jquery-3.5.1.js"></script>
+  <script type="text/javascript" src="/static/javascripts/bootstrap/bootstrap.min.js"></script>
+  <script type="text/javascript" src="/static/javascripts/stupid-table/stupidtable.js"></script>
+  <script type="text/javascript" src="/static/javascripts/jquery/jquery.dataTables.min.js"></script>
+  <style>
+    #map { height: 400px; width: 100%; margin-top: 20px; }
+    #coordinates { margin-top: 10px; }
+    .color-square {
+      display: inline-block;
+      width: 20px;
+      height: 20px;
+      margin-right: 5px;
+      vertical-align: middle;
+    }
+    .plot-container {
+      margin: 20px 0;
+      text-align: center;
+    }
+    .plot-container img {
+      max-width: 100%;
+      height: auto;
+      border: 1px solid #ddd;
+      padding: 10px;
+      margin: 10px;
+    }
+  </style>
+</head>
+<body>
+  <div class="menubar">
+    <ul class="menu">
+      <li class="menuItem"><a class="menuLink" id="indexMenuLink">Home</a></li>
+      <li class="menuItem"><a class="menuLink" id="docsLink" href="/docs/" target="_blank" rel="noopener noreferrer">Documentation</a></li>
+      <li class="menuItem"><a class="menuLink" id="classMenuLink">Classroom</a></li>
+      <li class="menuItem"><a class="menuLink active" id="rankingsMenuLink">Report Card</a></li>
+      <li class="menuItem"><a class="menuLink" id="dashMenuLink">Office</a></li>
+      <li class="menuItem"><a class="menuLink" id="activeMenuLink">Active</a></li>
+      <li class="menuImg"><div class="menuImg-container"><img src="/static/images/AFRL_logo.png"></div></li>
+      <li class="menuImg"><div class="menuImg-container"><img src="/static/images/AUKUS_logo.png"></div></li>
+      <li class="menuImg"><div class="menuImg-container top-pad"><img src="/static/images/DSTL_logo.png"></div></li>
+    </ul>
+  </div>
+  <br><br>
+  <div class="title" id="title">
+    Rankings
+  </div>
+
+  <!-- Plot containers for render.py plots -->
+  <div class="plot-container">
+    <details>
+      <summary>Performance Plots</summary>
+      <div id="plots">
+        {% if plot1_path %}
+        <img src="{{ plot1_path }}" alt="Performance Plot 1">
+        {% endif %}
+        {% if plot2_path %}
+        <img src="{{ plot2_path }}" alt="Performance Plot 2">
+        {% endif %}
+      </div>
+    </details>
+  </div>
+
+  <div id="map"></div>
+  <div id="coordinates"></div>
+  <details>
+    <summary>Estimated Preferences</summary>
+    {{pref_chart | safe}}
+  </details>
+  <br>
+  <div class="images-display" id="img-display">
+    <table id="table" class="table table-striped">
+      <thead>
+        <tr>
+          <th>Rank</th>
+          <th>Score</th>
+          <th>ID</th>
+          <th>Tag</th>
+          <th>Winner</th>      
+          <th>Reward</th>     
+          <th>Pair</th>       
+          <th>Info</th>
+          <th>Route</th>
+          <th>Map</th>
+          {% for k in cost_names %}
+          <th>{{ k }}</th>
+          {% endfor %}
+          <th>prefs</th>
+        </tr>
+      </thead>
+
+      <tbody>
+        {% for item in rankings %}
+        <tr>
+          <td>{{ loop.index }}</td>
+          <td>{{ "%.3f"|format(item.score) }}</td>
+          <td>{{ item.ident }}</td>
+          
+          <!-- Add route tag (seed_route or rl) -->
+          <td>
+            {% set tag = item.plan.get('tag', 'unknown') %}
+            {% if tag == 'seed_route' %}
+              <span class="badge bg-primary">Seed</span>
+            {% elif tag == 'rl' %}
+              <span class="badge bg-info">RL</span>
+            {% else %}
+              <span class="badge bg-secondary">{{ tag }}</span>
+            {% endif %}
+          </td>
+      
+          {% set win = item.get('winner', item.get('n_wins')) %}
+          <td>
+            {% if win is none %}
+              —
+            {% else %}
+              {% if win > 0 %}
+                <span class="badge bg-success">{{ win }}</span>
+              {% else %}
+                <span class="badge bg-secondary">{{ win }}</span>
+              {% endif %}
+            {% endif %}
+
+          </td>
+      
+          {% set rew = item.get('reward', item.get('avg_reward')) %}
+          <td>{{ "%.3f"|format(rew) if rew is not none else "—" }}</td>
+      
+          {% set pr = item.get('pair') %}
+          {% set w = item.get('winner_id') %}
+          <td>
+            {% if pr %}
+              {% for pid in pr %}
+                {% if pid == w %}
+                  <span class="font-weight:700;color:#28a745">{{ pid|truncate(6) }}</span>
+                {% else %}
+                  {{ pid|truncate(6) }}
+                {% endif %}
+                {% if not loop.last %} vs {% endif %}
+              {% endfor %}
+            {% else %}—{% endif %}
+          </td>
+      
+          <td>
+            <a href="/api/{{ sampler }}/item/{{ item.ident }}?remove=file_contents" target="_blank">ℹ</a>
+          </td>
+      
+          <td>
+            {%- set ext = item.plan.file_name.split(".")[-1] %}
+            <a href="/api/{{ sampler }}/item/{{ item.ident }}?key=file" download>
+              {{ item.plan.file_name|truncate(20) }}.{{ ext }}&nbsp;⤵️
+            </a>
+          </td>
+      
+          <td>
+            <div class="color-square"></div>
+            <button
+              {% if loop.index0 <= 2 %}
+                class="btn btn-primary view-map active" aria-pressed="true"
+              {% else %}
+                class="btn btn-primary view-map"
+              {% endif %}
+              id="map-btn-{{ item.path }}"
+              data-route='{{ item.plan | tojson | replace("'", "&#39;") }}'>
+              Show
+            </button>
+            {% if loop.index0 <= 2 %}
+            <script>
+              $(document).ready(function () {
+                var routeData = {{ item.plan | tojson | replace("'", "&#39;") }};
+                var btn = document.getElementById('map-btn-{{ item.path }}');
+                toggleRoute(btn, routeData);
+              });
+            </script>
+            {% endif %}
+          </td>
+      
+          {% for c in item.costs %}
+          <td>{{ "%.2f"|format(c) }}</td>
+          {% endfor %}
+      
+          <td>{{ item.pref }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+
+    </table>
+  </div>
+</body>
+<script>
+  var sampler = "{{sampler}}";
+  document.getElementById("indexMenuLink").setAttribute("href", "/?sampler=" + sampler);
+  document.getElementById("classMenuLink").setAttribute("href", "/classroom/" + sampler);
+  document.getElementById("dashMenuLink").setAttribute("href", "/dashboard/" + sampler);
+  document.getElementById("activeMenuLink").setAttribute("href", "/active/" + sampler);
+
+  var map = L.map('map').setView([0, 0], 2);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+  }).addTo(map);
+
+  var routes = {};
+  var markers = {};
+  var coordinatesList = [];
+
+  function toggleRoute(button, routeData) {
+    var $button = $(button);
+    var $colorSquare = $button.siblings('.color-square');
+    var routeId = $button.data('routeId');
+
+    if (routeId && routes[routeId]) {
+      map.removeLayer(routes[routeId]);
+      markers[routeId].forEach(marker => map.removeLayer(marker));
+      delete routes[routeId];
+      delete markers[routeId];
+      $button.data('routeId', null);
+      $colorSquare.css('background-color', '');
+      removeFromCoordinatesList(routeId);
+    } else {
+      var color = getRandomColor();
+      var lats = routeData.lat;
+      var lons = routeData.lon;
+      var elevs = routeData.alt;
+
+      if (!lats || !lons || lats.length === 0 || lons.length === 0) {
+        alert('Route data not available.');
+        return;
+      }
+
+      var routeCoords = lats.map((lat, i) => [lat, lons[i]]);
+      var route = L.polyline(routeCoords, {color: color}).addTo(map);
+      
+      routeId = Date.now().toString();
+      routes[routeId] = route;
+      $button.data('routeId', routeId);
+      $colorSquare.css('background-color', color);
+
+      var startMarker = L.marker(routeCoords[0]).addTo(map)
+        .bindPopup('Start: ' + routeCoords[0].join(', ') + '<br>Elevation: ' + elevs[0] + 'm');
+      var endMarker = L.marker(routeCoords[routeCoords.length - 1]).addTo(map)
+        .bindPopup('End: ' + routeCoords[routeCoords.length - 1].join(', ') + '<br>Elevation: ' + elevs[elevs.length - 1] + 'm');
+      
+      markers[routeId] = [startMarker, endMarker];
+
+      map.fitBounds(route.getBounds());
+
+      var plan_text = routeCoords[0];
+      addToCoordinatesList(routeId, plan_text, color);
+    }
+  }
+
+  var N_ROUTES_ON_MAP = 0;
+  function getRandomColor() {
+    var colors = ["1f77b4", "ff7f0e", "2ca02c", "d62728", "9467bd", "8c564b", "e377c2", "7f7f7f", "bcbd22", "17becf"];  // from https://stackoverflow.com/questions/64369710/what-are-the-hex-codes-of-matplotlib-tab10-palette
+    var color = "#" + colors[N_ROUTES_ON_MAP % colors.length];
+    N_ROUTES_ON_MAP++;
+    return color;
+  }
+
+  function addToCoordinatesList(id, text, color) {
+    coordinatesList.push({
+      id: id,
+      text: `<span style="color:${color}">●</span> ${text}`
+    });
+  }
+
+  function removeFromCoordinatesList(id) {
+    coordinatesList = coordinatesList.filter(item => item.id !== id);
+  }
+
+  function updateCoordinatesList() {
+    var coordinatesDiv = document.getElementById('coordinates');
+    coordinatesDiv.innerHTML = '<h3>Routes:</h3><ul>' + 
+      coordinatesList.map(item => `<li>${item.text}</li>`).join('') + 
+      '</ul>';
+  }
+
+  $(document).ready(function() {
+    var table = $('#table').DataTable({
+      "pageLength": 50,
+      "lengthMenu": [[10, 25, 50, 75, -1], [10, 25, 50, 75, "All"]]
+    });
+
+    $('#table tbody').on('click', 'button.view-map', function() {
+      var routeData = JSON.parse($(this).attr('data-route'));
+      toggleRoute(this, routeData);
+    });
+  });
+  
+</script>
+</html>
