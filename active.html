@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+  <link rel="stylesheet" href="/static/bootstrap.min.css">
+  <link href="/static/font-awesome/stylesheets/font-awesome.min.css" rel="stylesheet">
+  <link href="/static/style.css" rel="stylesheet">
+  <script type="text/javascript" src="/static/javascripts/jquery/jquery-3.5.1.js"></script>
+  <script type="text/javascript" src="/static/javascripts/bootstrap/bootstrap.min.js"></script>
+  <style>
+    .evaluation-container {
+      margin: 20px auto;
+      max-width: 1200px;
+    }
+    .route-image {
+      max-width: 400px;
+      height: auto;
+      border: 2px solid #ddd;
+      padding: 10px;
+      margin: 10px;
+    }
+    .route-comparison {
+      display: flex;
+      justify-content: center;
+      align-items: flex-start;
+      margin: 20px 0;
+      flex-wrap: wrap;
+    }
+    .route-item {
+      text-align: center;
+      margin: 10px;
+    }
+    .route-label {
+      font-weight: bold;
+      margin-top: 10px;
+    }
+    .status-info {
+      background: #f8f9fa;
+      padding: 15px;
+      border-radius: 5px;
+      margin: 20px 0;
+    }
+    .auto-evaluation {
+      background: #e7f3ff;
+      padding: 10px;
+      border-radius: 5px;
+      margin: 10px 0;
+    }
+    .refresh-info {
+      text-align: center;
+      color: #666;
+      margin: 10px 0;
+    }
+  </style>
+</head>
+<body>
+  <div class="menubar">
+    <ul class="menu">
+      <li class="menuItem"><a class="menuLink" id="indexMenuLink">Home</a></li>
+      <li class="menuItem"><a class="menuLink" id="docsLink" href="/docs/" target="_blank" rel="noopener noreferrer">Documentation</a></li>
+      <li class="menuItem"><a class="menuLink" id="classMenuLink">Classroom</a></li>
+      <li class="menuItem"><a class="menuLink" id="rankingsMenuLink">Report Card</a></li>
+      <li class="menuItem"><a class="menuLink" id="dashMenuLink">Office</a></li>
+      <li class="menuItem"><a class="menuLink active" id="activeMenuLink">Active</a></li>
+      <li class="menuImg"><div class="menuImg-container"><img src="/static/images/AFRL_logo.png"></div></li>
+      <li class="menuImg"><div class="menuImg-container"><img src="/static/images/AUKUS_logo.png"></div></li>
+      <li class="menuImg"><div class="menuImg-container top-pad"><img src="/static/images/DSTL_logo.png"></div></li>
+    </ul>
+  </div>
+  <br><br>
+  <div class="title" id="title">
+    Active Evaluations
+  </div>
+
+  <div class="evaluation-container">
+    <div class="status-info">
+      <h4>Current Status</h4>
+      <p>Sampler: <strong id="sampler-name">{{ sampler }}</strong></p>
+      <p>Auto-Evaluator: <span id="auto-eval-status" class="badge">Checking...</span></p>
+      <p>Total Comparisons: <span id="total-comparisons">0</span></p>
+      <p>Auto-Evaluated: <span id="auto-evaluated">0</span></p>
+      <p>Human-Evaluated: <span id="human-evaluated">0</span></p>
+    </div>
+
+    <div class="refresh-info">
+      <small>Auto-refreshing every 2 seconds</small>
+    </div>
+
+    <div id="current-evaluation">
+      <h3>Current Comparison</h3>
+      <div id="loading" style="text-align: center;">
+        <p>Waiting for next comparison...</p>
+      </div>
+      
+      <div id="comparison-content" style="display: none;">
+        <div class="auto-evaluation" id="auto-eval-result" style="display: none;">
+          <strong>Auto-Evaluator Decision:</strong> <span id="auto-choice"></span>
+        </div>
+        
+        <div class="route-comparison">
+          <div class="route-item">
+            <img id="route-1-img" src="" alt="Route 1" class="route-image">
+            <div class="route-label">
+              Route 1
+              <div id="route-1-info">
+                <small>
+                  <span id="route-1-tag"></span><br>
+                  ID: <span id="route-1-id"></span>
+                </small>
+              </div>
+            </div>
+          </div>
+          
+          <div class="route-item">
+            <img id="route-2-img" src="" alt="Route 2" class="route-image">
+            <div class="route-label">
+              Route 2
+              <div id="route-2-info">
+                <small>
+                  <span id="route-2-tag"></span><br>
+                  ID: <span id="route-2-id"></span>
+                </small>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <div style="text-align: center; margin-top: 20px;">
+          <p>Comparison Type: <span id="comparison-type" class="badge bg-info"></span></p>
+          <p>Request Score: <span id="request-score"></span></p>
+        </div>
+      </div>
+    </div>
+
+    <hr>
+
+    <div id="recent-history">
+      <h3>Recent Evaluations</h3>
+      <table class="table table-striped">
+        <thead>
+          <tr>
+            <th>Time</th>
+            <th>Type</th>
+            <th>Route 1</th>
+            <th>Route 2</th>
+            <th>Winner</th>
+            <th>Evaluator</th>
+          </tr>
+        </thead>
+        <tbody id="history-tbody">
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <script>
+    var sampler = "{{sampler}}";
+    document.getElementById("indexMenuLink").setAttribute("href", "/?sampler=" + sampler);
+    document.getElementById("classMenuLink").setAttribute("href", "/classroom/" + sampler);
+    document.getElementById("rankingsMenuLink").setAttribute("href", "/rankings/" + sampler);
+    document.getElementById("dashMenuLink").setAttribute("href", "/dashboard/" + sampler);
+
+    var currentRequest = null;
+    var stats = {
+      total: 0,
+      auto: 0,
+      human: 0
+    };
+
+    function formatTime() {
+      return new Date().toLocaleTimeString();
+    }
+
+    function updateCurrentComparison(data) {
+      if (!data || !data.routes || data.routes.length < 2) {
+        document.getElementById('loading').style.display = 'block';
+        document.getElementById('comparison-content').style.display = 'none';
+        return;
+      }
+
+      document.getElementById('loading').style.display = 'none';
+      document.getElementById('comparison-content').style.display = 'block';
+
+      // Update route images
+      var route1 = data.routes[0];
+      var route2 = data.routes[1];
+
+      // Generate route images (you'll need to implement the actual image generation)
+      // For now, using placeholder or assuming file_contents has base64 image
+      if (route1.file_contents) {
+        document.getElementById('route-1-img').src = 'data:image/png;base64,' + route1.file_contents;
+      }
+      if (route2.file_contents) {
+        document.getElementById('route-2-img').src = 'data:image/png;base64,' + route2.file_contents;
+      }
+
+      // Update route info
+      document.getElementById('route-1-tag').textContent = route1.plan?.tag || 'unknown';
+      document.getElementById('route-1-id').textContent = (route1.ident || '').substring(0, 8);
+      document.getElementById('route-2-tag').textContent = route2.plan?.tag || 'unknown';
+      document.getElementById('route-2-id').textContent = (route2.ident || '').substring(0, 8);
+
+      // Update comparison info
+      document.getElementById('comparison-type').textContent = data.comparison_type || 'unknown';
+      document.getElementById('request-score').textContent = data.score?.toFixed(3) || 'N/A';
+
+      currentRequest = data;
+    }
+
+    function addToHistory(request, winner, evaluatorType) {
+      var tbody = document.getElementById('history-tbody');
+      var row = tbody.insertRow(0);
+      
+      row.insertCell(0).textContent = formatTime();
+      row.insertCell(1).textContent = request.comparison_type || 'unknown';
+      row.insertCell(2).textContent = (request.routes[0].plan?.tag || '') + ' (' + request.routes[0].ident.substring(0, 6) + ')';
+      row.insertCell(3).textContent = (request.routes[1].plan?.tag || '') + ' (' + request.routes[1].ident.substring(0, 6) + ')';
+      row.insertCell(4).textContent = 'Route ' + (winner + 1);
+      row.insertCell(5).innerHTML = evaluatorType === 'auto' ? 
+        '<span class="badge bg-info">Auto</span>' : 
+        '<span class="badge bg-warning">Human</span>';
+
+      // Keep only last 10 entries
+      while (tbody.rows.length > 10) {
+        tbody.deleteRow(tbody.rows.length - 1);
+      }
+    }
+
+    function fetchCurrentEvaluation() {
+      // Get current evaluation from Redis or API
+      $.ajax({
+        url: '/api/' + sampler + '/current-evaluation',
+        method: 'GET',
+        success: function(data) {
+          if (data && data.request) {
+            updateCurrentComparison(data.request);
+            
+            if (data.auto_decision !== null) {
+              document.getElementById('auto-eval-result').style.display = 'block';
+              document.getElementById('auto-choice').textContent = 'Route ' + (data.auto_decision + 1);
+            } else {
+              document.getElementById('auto-eval-result').style.display = 'none';
+            }
+          }
+        },
+        error: function() {
+          // Fallback to checking requests endpoint
+          $.get('/api/' + sampler + '/requests?n=1', function(data) {
+            if (data && data.data && data.data[0]) {
+              updateCurrentComparison(data.data[0]);
+            }
+          });
+        }
+      });
+
+      // Update stats
+      $.get('/api/stats/' + sampler, function(data) {
+        if (data.meta) {
+          document.getElementById('total-comparisons').textContent = data.meta.n_answers || 0;
+          // You'll need to track auto vs human evaluations in your backend
+        }
+      });
+    }
+
+    // Check auto-evaluator status
+    function checkAutoEvaluator() {
+      $.get('/api/meta/' + sampler, function(data) {
+        var hasAutoEval = data.auto_evaluator_enabled || false;
+        var statusBadge = document.getElementById('auto-eval-status');
+        if (hasAutoEval) {
+          statusBadge.textContent = 'Enabled';
+          statusBadge.className = 'badge bg-success';
+        } else {
+          statusBadge.textContent = 'Disabled';
+          statusBadge.className = 'badge bg-secondary';
+        }
+      });
+    }
+
+    // Refresh every 2 seconds
+    setInterval(function() {
+      fetchCurrentEvaluation();
+      checkAutoEvaluator();
+    }, 2000);
+
+    // Initial load
+    fetchCurrentEvaluation();
+    checkAutoEvaluator();
+  </script>
+</body>
+</html>
