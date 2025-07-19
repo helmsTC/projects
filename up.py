@@ -109,3 +109,46 @@ async def _get_paths(self, n_search: int, max_optimizations_per_seed=1):
     
     return await self.extend(more_data)
     
+    
+    # Add this method to RandomPref class:
+async def add_seed_route(self, prefs: List[float]):
+    """Manually add a new seed route with given preferences"""
+    logger.info(f"Manually adding seed route with prefs: {prefs}")
+    
+    # Design the plan
+    plans = await self.designer.design([prefs])
+    
+    batch_id = len(self.batches)
+    if not self.batches:
+        self.batches.append([])
+    else:
+        self.batches.append([])
+    
+    for plan in plans:
+        plan["tag"] = "seed_route"
+        plan["batch"] = batch_id
+        if "ident" not in plan:
+            plan["ident"] = _md5(plan["pref"])
+    
+    # Update all tracking structures
+    new_indices = list(range(len(self.plans_), len(self.plans_) + len(plans)))
+    self.batches[batch_id].extend(new_indices)
+    
+    self.plans_.extend(plans)
+    costs = [p["costs"] for p in plans]
+    plan_prefs = [p["pref"] for p in plans]
+    idents = [p["ident"] for p in plans]
+    
+    self.features_.extend(costs)
+    self.plan_prefs_.extend(plan_prefs)
+    self.idents_.extend(idents)
+    
+    logger.info(f"Added {len(plans)} new seed routes")
+    logger.info(f"Total routes: {len(self.plans_)} (seeds: {len([p for p in self.plans_ if p.get('tag') == 'seed_route'])})")
+    
+    # Trigger generation of RL routes for the new seeds
+    await self._get_paths(1, max_optimizations_per_seed=self.max_optimizations_per_seed)
+    
+    return plans
+    
+    
