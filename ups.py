@@ -1,73 +1,53 @@
+@app.get("/api/{sampler}/requests", tags=["experiment state"])
+async def get_sampler_requests(
+    sampler: str,
+    n: int = 1,
+    username: str = Depends(_get_username),
+) -> JSON:
+    """Get pending requests for a sampler - proxy to backend"""
+    await _ensure_sampler_present(sampler)
+    
+    # Get from the backend API
+    async with httpx.AsyncClient() as httpclient:
+        try:
+            r = await httpclient.get(
+                f"http://backendpython:6463/{sampler}/requests?n={n}",
+                timeout=30,
+            )
+            if r.status_code == 200:
+                return r.json()
+        except:
+            pass
+    
+    return {"data": []}
+
 @app.get("/api/{sampler}/current-evaluation", tags=["experiment state"])
 async def get_current_evaluation(
     sampler: str,
     username: str = Depends(_get_username),
 ) -> JSON:
-    """Get the current evaluation state for the active view"""
-    await _ensure_sampler_present(sampler)
+    """Get current evaluation state for active view"""
+    # Try to get the latest request from Redis
+    request_key = f"sampler-{sampler}-requests"
+    request_data = await rj.lindex(request_key, 0)  # Peek at first item
     
-    # Get the latest queryfrom Redis
-    query_key = f"sampler-{sampler}-queries"
-    query_data = await rj.lpop(query_key)
-    
-    if query_data:
-        query= msgpack.loads(query_data)
-        # Put it back since we're just peeking
-        await rj.lpush(query_key, query_data)
-        
-        # Check if there's an auto-evaluation decision
-        auto_decision = await rj.get(f"auto-eval-{sampler}-decision")
-        
-        return {
-            "request": request,
-            "auto_decision": int(auto_decision) if auto_decision else None
-        }
+    if request_data:
+        try:
+            request = msgpack.loads(request_data)
+            return {
+                "request": request,
+                "auto_decision": None  # You can implement auto-decision tracking if needed
+            }
+        except:
+            pass
     
     return {"request": None, "auto_decision": None}
 
-@app.get("/api/{sampler}/queries", tags=["experiment state"])
-async def get_queries(
-    sampler: str,
-    n: int = 1,
-    username: str = Depends(_get_username),
-) -> JSON:
-    """Get pending queries for a sampler"""
-    await _ensure_sampler_present(sampler)
-    
-    key = f"sampler-{sampler}-queries"
-    queries = []
-    
-    for _ in range(n):
-        blob = await rj.lpop(key)
-        if blob is None:
-            break
-        queries.append(msgpack.loads(blob))
-    
-    if not queries:
-        return {"data": []}
-    
-    return {"data": queries}
 
 
 
-@app.get("/rankings/{sampler}")
-async def rankings_page(sampler: str):
-    # Get rankings data
-    rankings = await get_rankings(sampler)
-    
-    # Generate plots
-    renderer = Render()
-    plot1_base64 = renderer.generate_performance_plot(rankings)
-    plot2_base64 = renderer.generate_win_rate_plot(rankings)
-    
-    # Save plots or convert to data URLs
-    plot1_path = f"data:image/png;base64,{plot1_base64}"
-    plot2_path = f"data:image/png;base64,{plot2_base64}"
-    
-    return templates.TemplateResponse("rankings_routes.html", {
-        "query": query,
-        "sampler": sampler,
-        "rankings": rankings,
-        "plot1_path": plot1_path,
-        "plot2_path": plot2_path,
-        # ... other context variab
+$.get('/api/' + sampler + '/stats/training', function(data) {  // Add '/training' to match your API
+    if (data) {
+        document.getElementById('total-comparisons').textContent = data.n_answers || 0;
+    }
+});
